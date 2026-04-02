@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "配置 Node-Red 对话代理",
+        "description": "请输入 Node-Red 接收对话请求的 HTTP 地址。",
+        "data": {
+          "url": "Node-Red Webhook URL",
+          "api_key": "API 密钥 (可选)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到 Node-Red 服务器",
+      "invalid_auth": "身份验证失败",
+      "unknown": "发生未知错误"
+    },
+    "abort": {
+      "already_configured": "该服务已配置过了"
+    }
+  }
+}
