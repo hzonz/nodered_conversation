@@ -1,0 +1,8 @@
+{
+  "domain": "nodered_conversation",
+  "name": "Node-Red Conversation Agent",
+  "config_flow": true, 
+  "version": "1.0.0",
+  "iot_class": "local_polling",
+  "dependencies": ["conversation"]
+}
