@@ -34,7 +34,7 @@ https://github.com/hzonz/nodered_conversation
 `msg.payload.event.text:` 用户说的文字。
 `msg.payload.event.request_id: `本次对话唯一 ID (必须在回复时带回)。
 
-2. 返回响应 (Output)
+3. 返回响应 (Output)
 使用 fire event 节点：
 事件类型: `nodered_response_event`
 数据 (Data):
@@ -50,18 +50,33 @@ https://github.com/hzonz/nodered_conversation
 如果你需要处理逻辑，可以在中间加一个 function 节点：
 
 ```
-const { request_id, text } = msg.payload.event;
+// 1. 获取从 HA 传过来的原始数据
+const eventData = msg.payload.event;
 
-// 处理你的逻辑
-let reply = "你刚才说的是：" + text;
+// 2. 提取 request_id (对话ID，必需项)
+const requestId = eventData.request_id;
+const userText = eventData.text; // 用户说的话
 
-// 构造返回
+// 3. 编写你的逻辑处理
+let replyText = "";
+
+if (userText.includes("你好")) {
+    replyText = "你好！我是你的 Node-RED 智能管家。";
+} else if (userText.includes("时间")) {
+    replyText = "现在是北京时间：" + new Date().toLocaleString();
+} else {
+    replyText = "我已经收到指令：'" + userText + "'，正在处理中...";
+}
+
+// 4. 构造发送给 HA 'fire event' 节点的数据包
+// 注意：如果你在 Fire Event 节点里配置了 Data 留空，
+// 那么这里必须把数据放在 msg.payload 中
 msg.payload = {
-    data: {
-        request_id: request_id,
-        response: reply
-    }
+    "request_id": requestId,
+    "response": replyText
 };
+
+// 5. 返回消息
 return msg;
 ```
 
