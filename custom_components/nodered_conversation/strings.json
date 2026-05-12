@@ -2,19 +2,34 @@
   "config": {
     "step": {
       "user": {
-        "title": "配置 Node-Red 对话代理",
-        "description": "请输入 Node-Red 接收对话请求的 HTTP 地址。",
+        "title": "Node-RED Conversation Agent",
+        "description": "Enter the HTTP URL where Node-RED listens for conversation requests.",
         "data": {
-          "url": "Node-Red Webhook URL"
+          "url": "Node-RED Webhook URL"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Node-RED Agent",
+        "description": "Update the connection URL for your Node-RED instance.",
+        "data": {
+          "url": "Node-RED Webhook URL"
         }
       }
     },
     "error": {
-      "cannot_connect": "无法连接到 Node-Red 服务器",
-      "unknown": "发生未知错误"
+      "cannot_connect": "Failed to connect to Node-RED server. Please check the URL and network.",
+      "unknown": "Unexpected error occurred."
     },
     "abort": {
-      "already_configured": "该服务已配置过了"
+      "already_configured": "This service is already configured.",
+      "reconfigure_successful": "Reconfiguration successful."
+    }
+  },
+  "entity": {
+    "conversation": {
+      "nodered_agent": {
+        "name": "Node-RED Agent"
+      }
     }
   }
 }
