@@ -1,8 +1,12 @@
 {
   "domain": "nodered_conversation",
-  "name": "Node-Red Conversation Agent",
-  "config_flow": true, 
-  "version": "1.0.1",
+  "name": "Node-RED Conversation Agent",
+  "version": "1.0.2",
+  "config_flow": true,
   "iot_class": "local_push",
-  "dependencies": ["conversation"]
+  "dependencies": ["conversation"],
+  "codeowners": ["@hzonz"],
+  "documentation": "https://github.com/hzonz/nodered_conversation",
+  "issue_tracker": "https://github.com/hzonz/nodered_conversation/issues",
+  "quality_scale": "internal"
 }
