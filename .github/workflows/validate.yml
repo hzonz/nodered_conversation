@@ -1,0 +1,32 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+      - name: Static analyse
+        run: |
+          pip install pylint aiohttp
+          pylint $(git ls-files '*.py') --disable=C0114,C0115,C0116,W0613
+      - name: HA Setup Test
+        uses: ludeeus/setup-homeassistant@main
+        with:
+          config-dir: test_config
+      - name: Install integration
+        run: |
+          mkdir -p test_config/custom_components/nodered_conversation
+          cp -r custom_components/nodered_conversation/* test_config/custom_components/nodered_conversation/
