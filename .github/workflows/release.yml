@@ -1,0 +1,47 @@
+name: Auto Release Draft
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get Info
+        id: info
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('custom_components/nodered_conversation/manifest.json'))['version'])")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          COMMIT_TITLE=$(git log -1 --pretty=format:"%s")
+          echo "commit_title=$COMMIT_TITLE" >> $GITHUB_OUTPUT
+          if [[ $VERSION == *"beta"* ]] || [[ $VERSION == *"rc"* ]] || [[ $VERSION == *"alpha"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create ZIP
+        run: |
+          cd ${{ github.workspace }}/custom_components/nodered_conversation
+          zip -r ../../nodered_conversation.zip .
+
+      - name: Create Release Draft
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.info.outputs.version }}
+          name: v${{ steps.info.outputs.version }} - ${{ steps.info.outputs.commit_title }}
+          files: nodered_conversation.zip
+          draft: true
+          prerelease: ${{ steps.info.outputs.is_prerelease }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
