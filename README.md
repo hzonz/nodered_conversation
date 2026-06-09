@@ -32,7 +32,7 @@ https://github.com/hzonz/nodered_conversation
 事件类型: `nodered_request_event`
 关键内容:
 `msg.payload.event.text:` 用户说的文字。
-`msg.payload.event.request_id: `本次对话唯一 ID (必须在回复时带回)。
+`msg.payload.event.conversation_id: `本次对话唯一 ID (必须在回复时带回)。
 
 3. 返回响应 (Output)
 使用 fire event 节点：
@@ -41,7 +41,7 @@ https://github.com/hzonz/nodered_conversation
 
 ```
 {
-  "request_id": "{{payload.event.request_id}}",
+  "request_id": "{{payload.event.conversation_id}}",
   "response": "这是我的回复内容"
 }
 ```
@@ -50,33 +50,44 @@ https://github.com/hzonz/nodered_conversation
 如果你需要处理逻辑，可以在中间加一个 function 节点：
 
 ```
-// 1. 获取从 HA 传过来的原始数据
+
+// 1. 获取从 HA 传过来的原始数据 (nodered_request_event)
 const eventData = msg.payload.event;
 
-// 2. 提取 request_id (对话ID，必需项)
-const requestId = eventData.request_id;
-const userText = eventData.text; // 用户说的话
+// 2. 提取核心标识 优先使用 conversation_id
+// 我们在 Python 中确保了这两个字段都会发过来
+const convId = eventData.conversation_id;
+const userText = eventData.text || ""; 
+const userId = eventData.user_id;
 
-// 3. 编写你的逻辑处理
+// 3. 编写逻辑处理
 let replyText = "";
+let shouldContinue = false; // 默认不保持对话
 
 if (userText.includes("你好")) {
-    replyText = "你好！我是你的 Node-RED 智能管家。";
+    replyText = "你好！我是 Node-RED 智能管家。请问有什么我可以帮您的？";
+    shouldContinue = true; // 开启对话保持，等待用户下一句
 } else if (userText.includes("时间")) {
-    replyText = "现在是北京时间：" + new Date().toLocaleString();
+    replyText = "当前时间：" + new Date().toLocaleString();
+    shouldContinue = false; // 回答完毕，关闭对话
+} else if (userText.includes("你是谁")) {
+    // 演示使用透传的 user_id
+    replyText = `我是由 Node-RED 驱动的助手。识别到您的用户 ID 为：${userId || "未知"}`;
+    shouldContinue = true;
 } else {
-    replyText = "我已经收到指令：'" + userText + "'，正在处理中...";
+    replyText = "指令已收到。";
+    shouldContinue = false;
 }
 
-// 4. 构造发送给 HA 'fire event' 节点的数据包
-// 注意：如果你在 Fire Event 节点里配置了 Data 留空，
-// 那么这里必须把数据放在 msg.payload 中
+// 4. 必须确保 event.data 中包含以下字段，以便 Python 中的 Future 能正确匹配
 msg.payload = {
-    "request_id": requestId,
-    "response": replyText
+    "conversation_id": convId,      // 必须带回，用于匹配 Future 注册表
+    "response": replyText,          // 最终显示给用户的文字
+    "continue_conversation": shouldContinue // 2026 重构重点：是否让微信/助手继续等待输入
 };
 
-// 5. 返回消息
+// 5. 返回消息给 HA 的 'Fire Event' 节点
+// 目标事件名应设为：nodered_response_event
 return msg;
 ```
 
