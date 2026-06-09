@@ -1,125 +1,157 @@
-"""Node-Red 异步对话代理平台实现."""
+"""Node-Red 异步对话代理."""
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import MATCH_ALL
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import CONF_TIMEOUT, MATCH_ALL
+from homeassistant.core import HomeAssistant, callback, Event
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
-# 2026 规范：直接使用 asyncio 自带的 timeout (Python 3.11+)
-REQUEST_TIMEOUT = 30
-# 预编译正则：匹配开头的 [任何内容|任何内容] 以及紧随其后的空格
+# 预编译正则
 IM_PREFIX_PATTERN = re.compile(r"^\[.*?\|.*?\]\s*")
+
+@dataclass
+class NodeRedRuntimeData:
+    """用于存储集成运行时的内存数据."""
+    # 注册表：{conversation_id: Future}
+    pending_requests: dict[str, asyncio.Future[dict[str, Any]]]
+    # 统一监听器的取消函数
+    unsub_listener: callable | None = None
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """初始化 Node-Red 对话实体."""
-    # 直接添加实体即可。在现代 HA 中，继承了 ConversationEntity 的实体
-    # 会被系统自动识别为对话代理，无需再手动调用 async_set_agent。
-    async_add_entities([NodeRedAsyncConversationEntity(config_entry)])
+    """初始化集成."""
+    # 初始化运行时数据容器
+    entry.runtime_data = NodeRedRuntimeData(pending_requests={})
+    
+    async_add_entities([NodeRedAsyncConversationEntity(entry)])
 
 
 class NodeRedAsyncConversationEntity(conversation.ConversationEntity):
-    """基于事件驱动的 Node-RED 异步对话实体."""
+    """基于 Future 注册表和动态配置的 Node-RED 代理."""
 
-    # 使用翻译键，以便在 strings.json 中定义名称
     _attr_has_entity_name = True
-    _attr_translation_key = "nodered_agent" 
+    _attr_translation_key = "nodered_agent"
+    _attr_should_poll = False
 
     def __init__(self, entry: ConfigEntry) -> None:
         """初始化."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}-async-agent"
         
-        # 2026 规范：不要手动设置 entity_id，让 HA 根据 unique_id 和名称自动生成
-        # 如果必须固定，建议在配置流中处理
-        
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Node-RED Bridge",
-            manufacturer="Node-RED Custom",
-            model="Event-Based v2",
+            manufacturer="Node-RED Community",
+            model="Reactive-v3",
             sw_version=entry.version,
         )
 
+    async def async_added_to_hass(self) -> None:
+        """实体就绪：启动全局消息拦截器。"""
+        
+        @callback
+        def _handle_incoming_response(event: Event) -> None:
+            """核心分发逻辑"""
+            data = event.data
+            cid = data.get("conversation_id") or data.get("request_id")
+            
+            if not cid:
+                return
+
+            # 从运行时数据中查找对应的等待任务
+            registry = self._entry.runtime_data.pending_requests
+            if cid in registry:
+                future = registry[cid]
+                if not future.done():
+                    future.set_result(data)
+
+        # 注册全局总线监听
+        self._entry.runtime_data.unsub_listener = self.hass.bus.async_listen(
+            "nodered_response_event", 
+            _handle_incoming_response
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """销毁前清理。"""
+        if self._entry.runtime_data.unsub_listener:
+            self._entry.runtime_data.unsub_listener()
+
     @property
     def supported_languages(self) -> list[str] | str:
-        """支持的语言。返回 MATCH_ALL 表示支持所有 HA 配置的语言。"""
-        return ["zh-Hans", "zh-Hant", "en"]
+        return MATCH_ALL
 
     async def async_process(
         self, user_input: conversation.ConversationInput
     ) -> conversation.ConversationResult:
-        """处理对话逻辑."""
+        """
+        处理对话核心流程。
+        支持：1. 动态超时  2. 对话保持  3. 异常安全
+        """
+        # 确保有 Conversation ID（如果是外部平台接入，必须保持该 ID）
+        conv_id = user_input.conversation_id or f"direct_{asyncio.get_event_loop().time()}"
         
-        request_id = user_input.conversation_id or "default"
-        raw_text = user_input.text
+        # 文本清洗
+        clean_text = IM_PREFIX_PATTERN.sub("", user_input.text)
         
-        # 1. 清洗文本
-        clean_text = IM_PREFIX_PATTERN.sub("", raw_text)
-        
-        # 2. 创建异步 Future 对象
-        future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        # 在注册表中创建 Future
+        future = self.hass.loop.create_future()
+        self._entry.runtime_data.pending_requests[conv_id] = future
 
-        @callback
-        def handle_response_event(event):
-            """监听 Node-RED 回传的事件."""
-            # 增加对 event.data 的安全性检查
-            if event.data.get("request_id") == request_id:
-                response_text = event.data.get("response", "无响应内容")
-                if not future.done():
-                    future.set_result(str(response_text))
-
-        # 3. 注册监听器（确保在 fire 事件之前注册）
-        unsub = self.hass.bus.async_listen(
-            "nodered_response_event", 
-            handle_response_event
-        )
+        # 默认 30 秒，如果用户在“集成选项”里改了，实时生效
+        timeout_val = self._entry.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
 
         try:
-            # 4. 触发请求事件
+            # 使用统一的 conversation_id 字段
             self.hass.bus.async_fire("nodered_request_event", {
-                "request_id": request_id,
+                "conversation_id": conv_id,
                 "text": clean_text,
-                "conversation_id": user_input.conversation_id,
                 "language": user_input.language,
-                "device_id": user_input.device_id, # 2026 新增：透传设备 ID 方便溯源
+                "device_id": user_input.device_id,
+                "user_id": user_input.context.user_id if user_input.context else None,
+                "platform": "external_relay" # 标记来源方便 Node-RED 针对性处理
             })
 
-            # 5. 使用原生 asyncio 任务管理和超时
-            async with asyncio.timeout(REQUEST_TIMEOUT):
-                final_response = await future
+            # 6. 等待结果
+            async with asyncio.timeout(timeout_val):
+                payload = await future
+                
+            response_text = payload.get("response", "Node-RED 流程未提供有效回复")
+            # 关键：对话保持标志
+            should_continue = payload.get("continue_conversation", False)
 
         except TimeoutError:
-            _LOGGER.warning("Node-RED 对话请求超时: %s", request_id)
-            final_response = "抱歉，Node-RED 响应超时，请稍后再试。"
+            _LOGGER.error("Node-RED 在 %ss 内未响应会话 %s", timeout_val, conv_id)
+            response_text = "对话引擎响应超时，请检查后端的 Node-RED 流程。"
+            should_continue = False
         except Exception as err:
-            _LOGGER.error("处理对话时发生未知错误: %s", err)
-            final_response = f"抱歉，发生了系统错误：{err}"
+            _LOGGER.exception("会话处理发生严重错误: %s", err)
+            response_text = f"助手内部错误: {err}"
+            should_continue = False
         finally:
-            # 6. 务必销毁监听器，防止内存泄漏
-            unsub()
+            # 无论如何，移除注册表，防止内存堆积
+            self._entry.runtime_data.pending_requests.pop(conv_id, None)
 
-        # 7. 构建响应
         intent_response = intent.IntentResponse(language=user_input.language)
-        intent_response.async_set_speech(final_response)
+        intent_response.async_set_speech(response_text)
 
         return conversation.ConversationResult(
             response=intent_response,
-            conversation_id=user_input.conversation_id
+            conversation_id=conv_id,
+            continue_conversation=should_continue
         )

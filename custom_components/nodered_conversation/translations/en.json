@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Node-RED Assistant",
+        "data": {
+          "url": "API endpoint URL"
+        }
+      },
+      "reconfigure": {
+        "title": "Modify Node-RED Configuration",
+        "description": "Update the Node-RED server address. This will not affect existing entities or automations.",
+        "data": {
+          "url": "New API endpoint URL"
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "Configuration updated successfully, the integration has been reloaded.",
+      "already_configured": "This URL has already been configured."
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Node-RED. Please check the address.",
+      "server_error": "Node-RED returned a server error (5xx).",
+      "unknown": "An unknown error occurred."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "timeout": "Conversation timeout (seconds)"
+        }
+      }
+    }
+  }
+}
