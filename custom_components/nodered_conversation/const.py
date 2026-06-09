@@ -2,3 +2,4 @@
 
 DOMAIN = "nodered_conversation"
 CONF_URL = "url"
+DEFAULT_TIMEOUT = 30

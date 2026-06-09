@@ -1,34 +1,37 @@
 {
+  "title": "Node-RED 对话助手",
   "config": {
     "step": {
       "user": {
-        "title": "配置 Node-RED 对话代理",
-        "description": "请输入 Node-RED 接收对话请求的 HTTP 地址。",
+        "title": "设置 Node-RED 助手",
         "data": {
-          "url": "Node-RED Webhook 地址"
+          "url": "API 终端地址"
         }
       },
       "reconfigure": {
-        "title": "重新配置 Node-RED 代理",
-        "description": "更新 Node-RED 实例的连接地址。",
+        "title": "修改 Node-RED 配置",
+        "description": "更新 Node-RED 服务端地址。这不会影响现有的实体和自动化。",
         "data": {
-          "url": "Node-RED Webhook 地址"
+          "url": "新 API 终端地址"
         }
       }
     },
-    "error": {
-      "cannot_connect": "无法连接到 Node-RED 服务器，请检查地址和网络。",
-      "unknown": "发生未知错误。"
-    },
     "abort": {
-      "already_configured": "该服务已配置过了。",
-      "reconfigure_successful": "重新配置成功。"
+      "reconfigure_successful": "配置更新成功，集成已重新加载。",
+      "already_configured": "该 URL 已经配置过了。"
+    },
+    "error": {
+      "cannot_connect": "无法连接到 Node-RED，请检查地址。",
+      "server_error": "Node-RED 返回了服务器错误 (5xx)。",
+      "unknown": "发生未知错误。"
     }
   },
-  "entity": {
-    "conversation": {
-      "nodered_agent": {
-        "name": "Node-RED 对话助手"
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "timeout": "对话超时时间 (秒)"
+        }
       }
     }
   }
