@@ -2,35 +2,24 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
+
+from .const import DOMAIN, PLATFORMS
+from .types import NodeRedConfigEntry, NodeRedRuntimeData
 
 _LOGGER = logging.getLogger(__name__)
-
-# 定义支持的平台
-PLATFORMS: list[Platform] = [Platform.CONVERSATION]
-
-@dataclass
-class NodeRedRuntimeData:
-    """存放集成运行时的内存数据容器。"""
-    # 注册表：用于匹配异步响应 {conversation_id: Future}
-    pending_requests: dict[str, Any] 
-    # 也可以在这里存放全局 API 客户端等
-    # client: NodeRedClient
-
-type NodeRedConfigEntry = ConfigEntry[NodeRedRuntimeData]
 
 async def async_setup_entry(hass: HomeAssistant, entry: NodeRedConfigEntry) -> bool:
     """设置集成配置条目."""
     
-    # 初始化运行时数据
-    # 这解决了“谁来持有注册表”的问题，使其在整个集成生命周期内可用
+    integration = await async_get_integration(hass, DOMAIN)
+
     entry.runtime_data = NodeRedRuntimeData(
-        pending_requests={}
+        pending_requests={},
+        version=str(integration.version or "1.0.0"),
+        unsub_listener=None
     )
 
     # 注册选项更新监听器 (用于动态修改超时等设置)
@@ -48,8 +37,9 @@ async def update_listener(hass: HomeAssistant, entry: NodeRedConfigEntry) -> Non
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: NodeRedConfigEntry) -> bool:
-    """卸载配置条目."""
-    
-    # 卸载平台实体
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    return unload_ok
+    """卸载集成."""
+    # 卸载时清理监听器
+    if entry.runtime_data.unsub_listener:
+        entry.runtime_data.unsub_listener()
+        
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
