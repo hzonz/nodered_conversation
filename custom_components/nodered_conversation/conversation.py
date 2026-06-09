@@ -4,17 +4,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
-from typing import Any
 
 from homeassistant.components import conversation
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TIMEOUT, MATCH_ALL
-from homeassistant.core import HomeAssistant, callback, Event
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .types import NodeRedConfigEntry
 from .const import DOMAIN, DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,25 +20,15 @@ _LOGGER = logging.getLogger(__name__)
 # 预编译正则
 IM_PREFIX_PATTERN = re.compile(r"^\[.*?\|.*?\]\s*")
 
-@dataclass
-class NodeRedRuntimeData:
-    """用于存储集成运行时的内存数据."""
-    # 注册表：{conversation_id: Future}
-    pending_requests: dict[str, asyncio.Future[dict[str, Any]]]
-    # 统一监听器的取消函数
-    unsub_listener: callable | None = None
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: NodeRedConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """初始化集成."""
     # 初始化运行时数据容器
-    entry.runtime_data = NodeRedRuntimeData(pending_requests={})
-    
     async_add_entities([NodeRedAsyncConversationEntity(entry)])
-
 
 class NodeRedAsyncConversationEntity(conversation.ConversationEntity):
     """基于 Future 注册表和动态配置的 Node-RED 代理."""
@@ -49,42 +37,45 @@ class NodeRedAsyncConversationEntity(conversation.ConversationEntity):
     _attr_translation_key = "nodered_agent"
     _attr_should_poll = False
 
-    def __init__(self, entry: ConfigEntry) -> None:
+    def __init__(self, entry: NodeRedConfigEntry) -> None:
         """初始化."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}-async-agent"
+        runtime = entry.runtime_data
         
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Node-RED Bridge",
             manufacturer="Node-RED Community",
             model="Reactive-v3",
-            sw_version=entry.version,
+            sw_version=runtime.version,
         )
 
     async def async_added_to_hass(self) -> None:
-        """实体就绪：启动全局消息拦截器。"""
+        """注册监听器，并把取消函数存入 runtime_data."""
         
         @callback
-        def _handle_incoming_response(event: Event) -> None:
-            """核心分发逻辑"""
+        def _handle_msg(event):
+            """处理来自 Node-RED 的异步响应."""
             data = event.data
+            # 兼容 conversation_id 和 request_id
             cid = data.get("conversation_id") or data.get("request_id")
             
-            if not cid:
-                return
-
-            # 从运行时数据中查找对应的等待任务
-            registry = self._entry.runtime_data.pending_requests
-            if cid in registry:
-                future = registry[cid]
+            # 获取注册表
+            pending = self._entry.runtime_data.pending_requests
+            
+            if cid in pending:
+                future = pending[cid]
                 if not future.done():
+                    # 将整个 payload 传回给 async_process
                     future.set_result(data)
 
-        # 注册全局总线监听
+        if self._entry.runtime_data.unsub_listener:
+            self._entry.runtime_data.unsub_listener()
+
+        # 存入 runtime_data 供全局管理
         self._entry.runtime_data.unsub_listener = self.hass.bus.async_listen(
-            "nodered_response_event", 
-            _handle_incoming_response
+            "nodered_response_event", _handle_msg
         )
 
     async def async_will_remove_from_hass(self) -> None:
