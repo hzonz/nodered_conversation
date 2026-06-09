@@ -83,7 +83,7 @@ if (userText.includes("你好")) {
 msg.payload = {
     "conversation_id": convId,      // 必须带回，用于匹配 Future 注册表
     "response": replyText,          // 最终显示给用户的文字
-    "continue_conversation": shouldContinue // 2026 重构重点：是否让微信/助手继续等待输入
+    "continue_conversation": shouldContinue // 重构重点：是否让助手继续等待输入
 };
 
 // 5. 返回消息给 HA 的 'Fire Event' 节点
