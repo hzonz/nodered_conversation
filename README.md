@@ -16,7 +16,7 @@
 2. 点击右上角 **“添加存储库 (Custom Repository)”**  
 3. 填入仓库 URL:  
 ```yaml
-https://github.com/hzonz/nodered_conversation
+https://github.com/PraxiGEN/nodered_conversation
 ```
 4. 类型选择 **Integration**，然后添加  
 5. 搜索 **Node-Red Conversation Agent** 并安装，完成后重启。
